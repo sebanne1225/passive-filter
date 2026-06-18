@@ -1,0 +1,18 @@
+{
+  "name": "com.sebanne.passive-filter",
+  "displayName": "Passive Filter",
+  "version": "0.1.0",
+  "unity": "2022.3",
+  "description": "VRChat 向け、ギミックが他人視点で出っぱなしになるのを防ぐ非破壊 NDMF ツール",
+  "documentationUrl": "https://github.com/sebanne1225/passive-filter/blob/main/README.md",
+  "changelogUrl": "https://github.com/sebanne1225/passive-filter/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/sebanne1225/passive-filter/blob/main/LICENSE",
+  "url": "https://github.com/sebanne1225/passive-filter",
+  "author": {
+    "name": "sebanne"
+  },
+  "vpmDependencies": {
+    "com.vrchat.avatars": ">=3.5.0",
+    "nadena.dev.ndmf": ">=1.4.0"
+  }
+}
