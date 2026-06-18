@@ -1,6 +1,8 @@
 {
   "name": "Sebanne.PassiveFilter",
-  "references": [],
+  "references": [
+    "nadena.dev.ndmf.runtime"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
