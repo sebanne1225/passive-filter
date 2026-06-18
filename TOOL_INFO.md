@@ -19,11 +19,13 @@
 - 参考 listing page (`VCC` 追加先ではない): `https://sebanne1225.github.io/sebanne-listing/`
 - VCC に追加する URL: `https://sebanne1225.github.io/sebanne-listing/index.json`
 - listing 側に追加する `githubRepos`: `sebanne1225/passive-filter`
-- BOOTH 販売名: TBD
+- BOOTH 販売名: TBD（候補: パッシブフィルター）
 
 ## 公開スコープの要約
 
-- （ツールの主な機能を箇条書きで書く）
+- トグルギミックの初期状態を「非表示」へ自動補正し、他人視点の出っぱなしを防ぐ
+- 対象: GameObject active / Renderer 全般 / ParticleSystem / Light / AudioSource
+- 非破壊（NDMF ビルド時に適用）。除外リスト・対象範囲スイッチあり
 
 ## 導入導線の前提
 
@@ -32,4 +34,5 @@
 
 ## 既知の制限
 
-- （既知の制限や未対応事項を書く）
+- 初期値のみ非表示化（Saved 尊重）。int / radial / blendshape トグルは未対応
+- 判定が曖昧なトグルは安全のためスキップ（コンソールに警告）
