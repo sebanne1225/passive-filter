@@ -3,7 +3,8 @@
   "references": [
     "Sebanne.PassiveFilter",
     "nadena.dev.ndmf",
-    "VRC.SDK3A"
+    "VRC.SDK3A",
+    "nadena.dev.modular-avatar.core"
   ],
   "includePlatforms": [
     "Editor"
@@ -14,6 +15,12 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "nadena.dev.modular-avatar",
+      "expression": "",
+      "define": "PASSIVEFILTER_MA"
+    }
+  ],
   "noEngineReferences": false
 }

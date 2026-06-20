@@ -8,12 +8,14 @@ namespace Sebanne.PassiveFilter.Editor
     {
         private SerializedProperty _enable;
         private SerializedProperty _scope;
+        private SerializedProperty _baseHandling;
         private SerializedProperty _exclusions;
 
         private void OnEnable()
         {
             _enable = serializedObject.FindProperty("enable");
             _scope = serializedObject.FindProperty("scope");
+            _baseHandling = serializedObject.FindProperty("baseToggleHandling");
             _exclusions = serializedObject.FindProperty("exclusions");
         }
 
@@ -27,7 +29,27 @@ namespace Sebanne.PassiveFilter.Editor
                 MessageType.Info);
 
             EditorGUILayout.PropertyField(_enable, new GUIContent("有効"));
+
             EditorGUILayout.PropertyField(_scope, new GUIContent("対象範囲"));
+            EditorGUILayout.PropertyField(_baseHandling, new GUIContent("補正する対象"));
+
+            var hint = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true };
+            EditorGUILayout.LabelField(
+                "「対象範囲」はどのトグルを見るか、「補正する対象」は元アバターのトグルまで触るか。別の設定です。" +
+                "『全部』は元アバターに最初から入っているトグル（衣装表示など）も初期 OFF にします。基本は『あとから足したギミックだけ』を推奨。",
+                hint);
+
+            // 危険組合せ（すべてのトグル × 全部）のときだけ裸化注意を出す。
+            var scope = (Sebanne.PassiveFilter.PassiveFilterSettings.TargetScope)_scope.enumValueIndex;
+            var handling = (Sebanne.PassiveFilter.PassiveFilterSettings.BaseToggleHandling)_baseHandling.enumValueIndex;
+            if (scope == Sebanne.PassiveFilter.PassiveFilterSettings.TargetScope.AllToggles
+                && handling == Sebanne.PassiveFilter.PassiveFilterSettings.BaseToggleHandling.IncludeBase)
+            {
+                EditorGUILayout.HelpBox(
+                    "元アバターのトグルも対象になります。裸化（衣装が消える）に注意してください。",
+                    MessageType.Warning);
+            }
+
             EditorGUILayout.PropertyField(
                 _exclusions,
                 new GUIContent("除外リスト（指定オブジェクト以下は対象外）"),

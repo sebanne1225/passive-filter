@@ -22,6 +22,14 @@ namespace Sebanne.PassiveFilter.Editor
             InPhase(BuildPhase.Generating)
                 .Run("Passive Filter: capture base FX parameters", PassiveFilterProcessor.CaptureBaseParameters);
 
+#if PASSIVEFILTER_MA
+            // 方式(b): MA がリアクティブ（Direct BlendTree）をベイクする前に MA コンポーネントを直読し、
+            // 初期 ON の単純トグルを isDefault=false + activeSelf=false へ倒す（MA に hidden を整合ベイクさせる）。
+            InPhase(BuildPhase.Transforming)
+                .BeforePlugin("nadena.dev.modular-avatar")
+                .Run("Passive Filter: fold MA reactive toggles", ReactiveToggleProcessor.Run);
+#endif
+
             // 遅延パス: MA / VRCFury のベイク後にトグルを検出し初期状態を hidden 側へ倒す。
             InPhase(BuildPhase.Transforming)
                 .AfterPlugin("nadena.dev.modular-avatar")

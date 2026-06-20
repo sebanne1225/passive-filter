@@ -13,29 +13,45 @@ namespace Sebanne.PassiveFilter
     [DisallowMultipleComponent]
     public sealed class PassiveFilterSettings : MonoBehaviour, INDMFEditorOnly
     {
-        /// <summary>対象範囲。</summary>
+        /// <summary>対象範囲（軸1）＝どの広さのトグルを見るか。</summary>
         public enum TargetScope
         {
             /// <summary>Expression メニューに出ているトグルだけを対象にする（既定・安全）。</summary>
+            [InspectorName("メニューにあるトグルだけ（おすすめ）")]
             MenuTogglesOnly,
 
             /// <summary>メニュー外も含め検出した全トグルを対象にする（全防ぎ）。</summary>
+            [InspectorName("すべてのトグル（メニュー外も含む）")]
             AllToggles,
+        }
+
+        /// <summary>補正する対象（軸2）＝後付けギミックだけか、元アバターのトグルまで触るか。</summary>
+        public enum BaseToggleHandling
+        {
+            /// <summary>MA / VRCFury などで後付けしたトグルだけを補正（既定・安全。旧 option 2）。</summary>
+            [InspectorName("あとから足したギミックだけ（安全）")]
+            AddedOnly,
+
+            /// <summary>元アバターに最初から入っているトグルも含めて補正する（裸化リスク。旧 option 3）。</summary>
+            [InspectorName("全部（元アバターのトグルも含む）")]
+            IncludeBase,
         }
 
         [SerializeField] private bool enable = true;
         [SerializeField] private TargetScope scope = TargetScope.MenuTogglesOnly;
 
+        // 補正する対象（軸2）。既定 AddedOnly = base avatar 由来トグルを除外し後付け分のみ（旧 option 2）。
+        [SerializeField] private BaseToggleHandling baseToggleHandling = BaseToggleHandling.AddedOnly;
+
         // 指定オブジェクト以下のサブツリーは対象外（GameObject / Component を許容）。
         [SerializeField] private List<UnityEngine.Object> exclusions = new List<UnityEngine.Object>();
 
-        // option 3 用 seam（3-ready）。既定 false = base avatar 由来トグルを除外し MA 追加分のみ対象（option 2）。
-        // true にすると base FX のトグルも対象に含める（将来 opt-in。現状 Inspector には未公開）。
-        [SerializeField] private bool includeBaseAvatarToggles = false;
-
         public bool Enabled => enable;
         public TargetScope Scope => scope;
+        public BaseToggleHandling BaseHandling => baseToggleHandling;
         public IReadOnlyList<UnityEngine.Object> Exclusions => exclusions;
-        public bool IncludeBaseAvatarToggles => includeBaseAvatarToggles;
+
+        /// <summary>軸2 を bool 視点で見るアダプタ。true = 元アバター由来トグルも含めて補正する。</summary>
+        public bool IncludeBaseAvatarToggles => baseToggleHandling == BaseToggleHandling.IncludeBase;
     }
 }
