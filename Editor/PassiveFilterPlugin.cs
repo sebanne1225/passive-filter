@@ -17,6 +17,12 @@ namespace Sebanne.PassiveFilter.Editor
 
         protected override void Configure()
         {
+            // 早期パス: MA がアニメータを merge する前（Generating < Transforming）に base FX の
+            // パラメータ名を捕捉する。遅延パスの option 2（base 由来トグル除外）に使う。
+            InPhase(BuildPhase.Generating)
+                .Run("Passive Filter: capture base FX parameters", PassiveFilterProcessor.CaptureBaseParameters);
+
+            // 遅延パス: MA / VRCFury のベイク後にトグルを検出し初期状態を hidden 側へ倒す。
             InPhase(BuildPhase.Transforming)
                 .AfterPlugin("nadena.dev.modular-avatar")
                 .Run("Passive Filter: fold toggles to hidden", PassiveFilterProcessor.Run);

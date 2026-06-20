@@ -29,8 +29,13 @@ namespace Sebanne.PassiveFilter
         // 指定オブジェクト以下のサブツリーは対象外（GameObject / Component を許容）。
         [SerializeField] private List<UnityEngine.Object> exclusions = new List<UnityEngine.Object>();
 
+        // option 3 用 seam（3-ready）。既定 false = base avatar 由来トグルを除外し MA 追加分のみ対象（option 2）。
+        // true にすると base FX のトグルも対象に含める（将来 opt-in。現状 Inspector には未公開）。
+        [SerializeField] private bool includeBaseAvatarToggles = false;
+
         public bool Enabled => enable;
         public TargetScope Scope => scope;
         public IReadOnlyList<UnityEngine.Object> Exclusions => exclusions;
+        public bool IncludeBaseAvatarToggles => includeBaseAvatarToggles;
     }
 }

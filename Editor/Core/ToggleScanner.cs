@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 
@@ -18,14 +17,22 @@ namespace Sebanne.PassiveFilter.Editor.Core
         }
     }
 
-    /// <summary>1 レイヤーのトグル検出結果。</summary>
+    /// <summary>1 トグルの検出結果（古典 2 ステート / BlendTree 共通）。</summary>
     internal sealed class ToggleHideResult
     {
-        public AnimatorStateMachine StateMachine;
         public string LayerName;
         public string DriverParam;
-        public bool HiddenValue;
+
+        /// <summary>true=Float driver（BlendTree blendParameter）/ false=Bool driver（古典 2 ステート）。</summary>
+        public bool IsFloat;
+
+        /// <summary>hidden へ倒す driver の既定値。Bool は 0/1、Float は off 子の threshold。</summary>
+        public float HiddenValue;
+
+        /// <summary>古典トグルのレイヤー初期 state 変更用。BlendTree では null（初期 state 変更は不要）。</summary>
+        public AnimatorStateMachine StateMachine;
         public AnimatorState OffState;
+
         public List<HideTarget> Targets = new List<HideTarget>();
     }
 
@@ -83,47 +90,16 @@ namespace Sebanne.PassiveFilter.Editor.Core
                 return null;
             }
 
-            var mapA = GetStateTargets(clipA);
-            var mapB = GetStateTargets(clipB);
-
-            var keys = new HashSet<(string, HideKind)>();
-            foreach (var k in mapA.Keys) keys.Add(k);
-            foreach (var k in mapB.Keys) keys.Add(k);
-            if (keys.Count == 0) return null; // hide 対象なし
-
-            AnimatorState commonHidden = null;
-            var targets = new List<HideTarget>();
-            foreach (var key in keys)
+            var mapA = HiddenBindingClassifier.GetHideTargets(clipA);
+            var mapB = HiddenBindingClassifier.GetHideTargets(clipB);
+            if (!HiddenBindingClassifier.TryResolveHidden(mapA, mapB, out bool hiddenIsA, out var targets, out var conflict))
             {
-                bool hasA = mapA.TryGetValue(key, out var va);
-                bool hasB = mapB.TryGetValue(key, out var vb);
-                bool aOne = hasA && Approximately(va, 1f);
-                bool bOne = hasB && Approximately(vb, 1f);
-                bool aZero = hasA && Approximately(va, 0f);
-                bool bZero = hasB && Approximately(vb, 0f);
-
-                AnimatorState hiddenState;
-                if (aOne ^ bOne)
-                    hiddenState = aOne ? stateB : stateA;          // 片方だけ有効(1) → もう片方が hidden
-                else if (!aOne && !bOne && (aZero ^ bZero))
-                    hiddenState = aZero ? stateA : stateB;          // 片方だけ無効(0) → そちらが hidden
-                else
-                    continue;                                       // 判定不能 → この対象はスキップ
-
-                if (commonHidden == null)
-                {
-                    commonHidden = hiddenState;
-                }
-                else if (commonHidden != hiddenState)
-                {
-                    PassiveFilterLog.Warn($"レイヤー '{layer.name}' は複数対象で hidden 方向が一致しないためスキップしました。");
-                    return null;
-                }
-
-                targets.Add(new HideTarget(key.Item1, key.Item2));
+                if (conflict != null)
+                    PassiveFilterLog.Warn($"レイヤー '{layer.name}' は{conflict}ためスキップしました。");
+                return null; // hide 対象なし or 方向矛盾
             }
 
-            if (commonHidden == null || targets.Count == 0) return null;
+            var commonHidden = hiddenIsA ? stateA : stateB;
 
             if (!TryGetDriverValueForState(sm, commonHidden, driver, stateA, stateB, out bool hiddenValue))
             {
@@ -133,10 +109,11 @@ namespace Sebanne.PassiveFilter.Editor.Core
 
             return new ToggleHideResult
             {
-                StateMachine = sm,
                 LayerName = layer.name,
                 DriverParam = driver,
-                HiddenValue = hiddenValue,
+                IsFloat = false,
+                HiddenValue = hiddenValue ? 1f : 0f,
+                StateMachine = sm,
                 OffState = commonHidden,
                 Targets = targets,
             };
@@ -154,20 +131,6 @@ namespace Sebanne.PassiveFilter.Editor.Core
                 foreach (var c in t.conditions)
                     if (boolParams.Contains(c.parameter)) acc.Add(c.parameter);
             }
-        }
-
-        private static Dictionary<(string, HideKind), float> GetStateTargets(AnimationClip clip)
-        {
-            var dict = new Dictionary<(string, HideKind), float>();
-            if (clip == null) return dict;
-
-            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-            {
-                if (!HiddenBindingClassifier.TryClassify(binding, out var kind)) continue;
-                if (!HiddenBindingClassifier.TryGetConstant(clip, binding, out var value)) continue;
-                dict[(binding.path, kind)] = value;
-            }
-            return dict;
         }
 
         // off-state（commonHidden）へ遷移させる driver 値を condition から割り出す（逆トグル対応）。
@@ -211,7 +174,5 @@ namespace Sebanne.PassiveFilter.Editor.Core
             hiddenValue = found.Value;
             return true;
         }
-
-        private static bool Approximately(float v, float target) => Mathf.Abs(v - target) < 0.0001f;
     }
 }
