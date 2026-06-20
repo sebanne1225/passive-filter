@@ -9,7 +9,7 @@
 - 表示名: `Passive Filter`
 - Runtime asmdef: `Sebanne.PassiveFilter`
 - Editor asmdef: `Sebanne.PassiveFilter.Editor`
-- 現在 version: `0.1.0`
+- 現在 version: `1.0.0`
 
 ## 公開メタ情報
 
