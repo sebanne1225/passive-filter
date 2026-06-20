@@ -123,6 +123,78 @@ namespace Sebanne.PassiveFilter.Editor.Core
             return true;
         }
 
+        /// <summary>
+        /// N 個の clip（threshold + hide 対象マップ）から、clean な単一トグルかを判定する
+        /// （全 clip が off 群 / on 群へ一貫分類でき、off 群が単一 threshold）。
+        /// BlendTreeToggleScanner の N&gt;2 子（多バリアント）経路用。2 子は <see cref="TryResolveHidden"/> を使う。
+        /// 成立時、off 群の共通 threshold と対象一覧を返す。conflictReason 有り = 補正不能（warn 対象）。
+        /// </summary>
+        public static bool TryResolveHiddenMulti(
+            List<(float threshold, Dictionary<(string, HideKind), float> map)> clips,
+            out float offThreshold,
+            out List<HideTarget> targets,
+            out string conflictReason)
+        {
+            offThreshold = 0f;
+            targets = new List<HideTarget>();
+            conflictReason = null;
+
+            var union = new HashSet<(string, HideKind)>();
+            foreach (var c in clips)
+                foreach (var k in c.map.Keys) union.Add(k);
+            if (union.Count == 0) return false; // hide 対象なし（silent）
+
+            // 各 clip を off-clip（opinion を持つ全対象が 0）/ on-clip（全 1）/ mixed / neutral に分類。
+            var offThresholds = new HashSet<float>();
+            bool hasOff = false, hasOn = false;
+            foreach (var c in clips)
+            {
+                bool anyZero = false, anyOne = false;
+                foreach (var kv in c.map)
+                {
+                    if (Approximately(kv.Value, 0f)) anyZero = true;
+                    else if (Approximately(kv.Value, 1f)) anyOne = true;
+                }
+                if (anyZero && anyOne)
+                {
+                    conflictReason = "1 つの clip 内で hidden/shown が混在する";
+                    return false;
+                }
+                if (anyZero) { hasOff = true; offThresholds.Add(c.threshold); }
+                else if (anyOne) { hasOn = true; }
+                // neutral（対象なし / 0,1 以外）は寄与しない
+            }
+
+            if (!hasOff || !hasOn) return false; // トグルになっていない（常時 off / 常時 on）
+
+            if (offThresholds.Count != 1)
+            {
+                conflictReason = "off 側 threshold が単一に定まらない";
+                return false;
+            }
+
+            // 全対象が「ある off-clip で 0」かつ「ある on-clip で 1」になっているか。
+            foreach (var key in union)
+            {
+                bool hiddenSomewhere = false, shownSomewhere = false;
+                foreach (var c in clips)
+                {
+                    if (!c.map.TryGetValue(key, out var v)) continue;
+                    if (Approximately(v, 0f)) hiddenSomewhere = true;
+                    else if (Approximately(v, 1f)) shownSomewhere = true;
+                }
+                if (!hiddenSomewhere || !shownSomewhere)
+                {
+                    conflictReason = "対象が off/on 両方のトグルになっていない";
+                    return false;
+                }
+                targets.Add(new HideTarget(key.Item1, key.Item2));
+            }
+
+            foreach (var t in offThresholds) offThreshold = t; // 単一値
+            return true;
+        }
+
         private static bool Approximately(float v, float target) => Mathf.Abs(v - target) < 0.0001f;
     }
 }
