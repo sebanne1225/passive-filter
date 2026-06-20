@@ -7,7 +7,15 @@ namespace Sebanne.PassiveFilter.Editor.Core
     {
         private const string Prefix = "[Passive Filter] ";
 
-        public static void Info(string message) => Debug.Log(Prefix + message);
+        /// <summary>詳細ログ（Info）を出すか。各ビルドパス開始時に設定から再セットされる。既定 OFF。</summary>
+        public static bool Verbose;
+
+        public static void Info(string message)
+        {
+            if (!Verbose) return;
+            Debug.Log(Prefix + message);
+        }
+
         public static void Warn(string message) => Debug.LogWarning(Prefix + message);
         public static void Error(string message) => Debug.LogError(Prefix + message);
     }

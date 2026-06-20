@@ -19,6 +19,7 @@ namespace Sebanne.PassiveFilter.Editor.Core
         {
             var settings = ctx.AvatarRootObject.GetComponent<PassiveFilterSettings>();
             if (settings == null || !settings.Enabled) return;
+            PassiveFilterLog.Verbose = settings.VerboseLogging;
             // settings はここでは破棄しない（後段 PassiveFilterProcessor.Run の finally が破棄する）。
 
             var results = ReactiveToggleScanner.Scan(ctx.AvatarRootObject);

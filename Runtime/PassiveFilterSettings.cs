@@ -46,10 +46,17 @@ namespace Sebanne.PassiveFilter
         // 指定オブジェクト以下のサブツリーは対象外（GameObject / Component を許容）。
         [SerializeField] private List<UnityEngine.Object> exclusions = new List<UnityEngine.Object>();
 
+        // 詳細ログ（検出・補正の内訳）を Unity コンソールへ出すか。既定 OFF。
+        // 補正できなかった通知（NDMF ErrorReport）はこのフラグに関わらず常に表示する。
+        [SerializeField] private bool verboseLogging = false;
+
         public bool Enabled => enable;
         public TargetScope Scope => scope;
         public BaseToggleHandling BaseHandling => baseToggleHandling;
         public IReadOnlyList<UnityEngine.Object> Exclusions => exclusions;
+
+        /// <summary>詳細ログを Unity コンソールへ出すか（既定 OFF）。NDMF の補正不可通知は常時表示。</summary>
+        public bool VerboseLogging => verboseLogging;
 
         /// <summary>軸2 を bool 視点で見るアダプタ。true = 元アバター由来トグルも含めて補正する。</summary>
         public bool IncludeBaseAvatarToggles => baseToggleHandling == BaseToggleHandling.IncludeBase;

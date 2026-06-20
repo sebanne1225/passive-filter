@@ -32,6 +32,7 @@ namespace Sebanne.PassiveFilter.Editor.Core
         {
             var settings = ctx.AvatarRootObject.GetComponent<PassiveFilterSettings>();
             if (settings == null || !settings.Enabled) return;
+            PassiveFilterLog.Verbose = settings.VerboseLogging;
 
             var descriptor = ctx.AvatarRootObject.GetComponent<VRCAvatarDescriptor>();
             if (descriptor == null) return;
@@ -53,6 +54,7 @@ namespace Sebanne.PassiveFilter.Editor.Core
         {
             var settings = ctx.AvatarRootObject.GetComponent<PassiveFilterSettings>();
             if (settings == null) return;
+            PassiveFilterLog.Verbose = settings.VerboseLogging;
 
             try
             {

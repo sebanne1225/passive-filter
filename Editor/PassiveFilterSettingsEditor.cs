@@ -10,6 +10,7 @@ namespace Sebanne.PassiveFilter.Editor
         private SerializedProperty _scope;
         private SerializedProperty _baseHandling;
         private SerializedProperty _exclusions;
+        private SerializedProperty _verbose;
 
         private void OnEnable()
         {
@@ -17,6 +18,7 @@ namespace Sebanne.PassiveFilter.Editor
             _scope = serializedObject.FindProperty("scope");
             _baseHandling = serializedObject.FindProperty("baseToggleHandling");
             _exclusions = serializedObject.FindProperty("exclusions");
+            _verbose = serializedObject.FindProperty("verboseLogging");
         }
 
         public override void OnInspectorGUI()
@@ -54,6 +56,12 @@ namespace Sebanne.PassiveFilter.Editor
                 _exclusions,
                 new GUIContent("除外リスト（指定オブジェクト以下は対象外）"),
                 true);
+
+            EditorGUILayout.PropertyField(
+                _verbose,
+                new GUIContent(
+                    "詳細ログを Unity コンソールに出力",
+                    "ベイク時の検出・補正の詳細を Unity コンソールに出します。補正できなかった通知は常に表示されます。"));
 
             serializedObject.ApplyModifiedProperties();
         }
