@@ -15,7 +15,9 @@ namespace Sebanne.PassiveFilter.Editor.Core
         private const int MaxDepth = 32;
 
         /// <param name="paramNames">controller の全パラメータ名（blendParameter の妥当性確認用）。</param>
-        public static List<ToggleHideResult> Scan(AnimatorController controller, HashSet<string> paramNames)
+        /// <param name="diagnostics">補正できなかったトグルの診断を積むリスト（NDMF Console 用）。</param>
+        public static List<ToggleHideResult> Scan(
+            AnimatorController controller, HashSet<string> paramNames, List<PassiveFilterDiagnostic> diagnostics)
         {
             var results = new List<ToggleHideResult>();
             if (controller == null) return results;
@@ -24,7 +26,7 @@ namespace Sebanne.PassiveFilter.Editor.Core
             foreach (var layer in controller.layers)
             {
                 if (layer.stateMachine == null) continue;
-                ScanStateMachine(layer.stateMachine, layer.name, paramNames, results, visited);
+                ScanStateMachine(layer.stateMachine, layer.name, paramNames, results, visited, diagnostics);
             }
             return results;
         }
@@ -35,14 +37,15 @@ namespace Sebanne.PassiveFilter.Editor.Core
             string layerName,
             HashSet<string> paramNames,
             List<ToggleHideResult> results,
-            HashSet<BlendTree> visited)
+            HashSet<BlendTree> visited,
+            List<PassiveFilterDiagnostic> diagnostics)
         {
             if (sm.states != null)
             {
                 foreach (var cs in sm.states)
                 {
                     if (cs.state != null && cs.state.motion is BlendTree bt)
-                        WalkBlendTree(bt, layerName, paramNames, results, visited, 0);
+                        WalkBlendTree(bt, layerName, paramNames, results, visited, 0, diagnostics);
                 }
             }
 
@@ -50,7 +53,7 @@ namespace Sebanne.PassiveFilter.Editor.Core
             {
                 foreach (var child in sm.stateMachines)
                     if (child.stateMachine != null)
-                        ScanStateMachine(child.stateMachine, layerName, paramNames, results, visited);
+                        ScanStateMachine(child.stateMachine, layerName, paramNames, results, visited, diagnostics);
             }
         }
 
@@ -60,7 +63,8 @@ namespace Sebanne.PassiveFilter.Editor.Core
             HashSet<string> paramNames,
             List<ToggleHideResult> results,
             HashSet<BlendTree> visited,
-            int depth)
+            int depth,
+            List<PassiveFilterDiagnostic> diagnostics)
         {
             if (tree == null || depth > MaxDepth || !visited.Add(tree)) return;
 
@@ -72,19 +76,19 @@ namespace Sebanne.PassiveFilter.Editor.Core
                 && children[0].motion is AnimationClip clip0
                 && children[1].motion is AnimationClip clip1)
             {
-                var toggle = TryBuildToggle(tree, layerName, children[0], children[1], clip0, clip1, paramNames);
+                var toggle = TryBuildToggle(tree, layerName, children[0], children[1], clip0, clip1, paramNames, diagnostics);
                 if (toggle != null) results.Add(toggle);
                 return; // 2 子ともクリップ＝葉。BlendTree の子は無いので再帰しない。
             }
 
             // 多バリアント（>2 子）/ clip+subtree 混在の Simple1D: clip 子を評価する。
             if (tree.blendType == BlendTreeType.Simple1D)
-                EvaluateSimple1DMulti(tree, layerName, paramNames, results);
+                EvaluateSimple1DMulti(tree, layerName, paramNames, results, diagnostics);
 
             // コンテナ: 子の BlendTree を再帰する（ネストした clean トグルを検出）。
             foreach (var c in children)
                 if (c.motion is BlendTree childTree)
-                    WalkBlendTree(childTree, layerName, paramNames, results, visited, depth + 1);
+                    WalkBlendTree(childTree, layerName, paramNames, results, visited, depth + 1, diagnostics);
         }
 
         // 多バリアント（>2 子）/ 混在の Simple1D を評価する。
@@ -95,7 +99,8 @@ namespace Sebanne.PassiveFilter.Editor.Core
             BlendTree tree,
             string layerName,
             HashSet<string> paramNames,
-            List<ToggleHideResult> results)
+            List<ToggleHideResult> results,
+            List<PassiveFilterDiagnostic> diagnostics)
         {
             var driver = tree.blendParameter;
             if (string.IsNullOrEmpty(driver) || !paramNames.Contains(driver)) return;
@@ -119,7 +124,7 @@ namespace Sebanne.PassiveFilter.Editor.Core
             if (hasSubtree)
             {
                 // (B) packed: この param が双方向（0 と 1 の両方）でトグルする対象＝安全補正不可。
-                var warnTargets = new List<string>();
+                var packedPaths = new List<string>();
                 foreach (var key in union)
                 {
                     bool any0 = false, any1 = false;
@@ -129,13 +134,17 @@ namespace Sebanne.PassiveFilter.Editor.Core
                         if (Mathf.Abs(v) < 0.0001f) any0 = true;
                         else if (Mathf.Abs(v - 1f) < 0.0001f) any1 = true;
                     }
-                    if (any0 && any1) warnTargets.Add($"{key.Item1} ({key.Item2})");
+                    if (any0 && any1) packedPaths.Add(key.Item1);
                 }
-                if (warnTargets.Count > 0)
-                    PassiveFilterLog.Info(
-                        $"⚠ レイヤー '{layerName}' の packed BlendTree (param '{driver}') の対象 " +
-                        $"[{string.Join(", ", warnTargets)}] は packed 構造のため安全に自動補正できません" +
-                        "（除外リスト or 手動対応してください）。");
+                if (packedPaths.Count > 0)
+                    diagnostics.Add(new PassiveFilterDiagnostic
+                    {
+                        Category = DiagnosticCategory.PackedUnsupported,
+                        LayerName = layerName,
+                        Driver = driver,
+                        TargetPaths = packedPaths,
+                        Reason = "packed 構造（1 つの param が複数対象を多重切替）のため安全に自動補正できません（除外リスト or 手動対応してください）",
+                    });
                 return; // 補正しない。
             }
 
@@ -155,9 +164,13 @@ namespace Sebanne.PassiveFilter.Editor.Core
             }
             else if (reason != null)
             {
-                // severity は当面 Info（NDMF ベイク中 LogWarning は Console に出ないため）。正式な surfacing は NDMF コンソール実装で対応。
-                PassiveFilterLog.Info(
-                    $"⚠ レイヤー '{layerName}' の BlendTree (param '{driver}') は{reason}ため補正をスキップしました。");
+                diagnostics.Add(new PassiveFilterDiagnostic
+                {
+                    Category = DiagnosticCategory.AmbiguousSkip,
+                    LayerName = layerName,
+                    Driver = driver,
+                    Reason = reason,
+                });
             }
         }
 
@@ -168,7 +181,8 @@ namespace Sebanne.PassiveFilter.Editor.Core
             ChildMotion childB,
             AnimationClip clipA,
             AnimationClip clipB,
-            HashSet<string> paramNames)
+            HashSet<string> paramNames,
+            List<PassiveFilterDiagnostic> diagnostics)
         {
             var driver = tree.blendParameter;
             if (string.IsNullOrEmpty(driver) || !paramNames.Contains(driver)) return null;
@@ -178,7 +192,13 @@ namespace Sebanne.PassiveFilter.Editor.Core
             if (!HiddenBindingClassifier.TryResolveHidden(mapA, mapB, out bool hiddenIsA, out var targets, out var conflict))
             {
                 if (conflict != null)
-                    PassiveFilterLog.Warn($"レイヤー '{layerName}' の BlendTree (param '{driver}') は{conflict}ためスキップしました。");
+                    diagnostics.Add(new PassiveFilterDiagnostic
+                    {
+                        Category = DiagnosticCategory.AmbiguousSkip,
+                        LayerName = layerName,
+                        Driver = driver,
+                        Reason = conflict,
+                    });
                 return null; // hide 対象なし or 方向矛盾
             }
 
@@ -186,8 +206,13 @@ namespace Sebanne.PassiveFilter.Editor.Core
             float onThreshold = hiddenIsA ? childB.threshold : childA.threshold;
             if (Mathf.Abs(offThreshold - onThreshold) < 0.0001f)
             {
-                PassiveFilterLog.Warn(
-                    $"レイヤー '{layerName}' の BlendTree (param '{driver}') は off/on の threshold が同一のためスキップしました。");
+                diagnostics.Add(new PassiveFilterDiagnostic
+                {
+                    Category = DiagnosticCategory.AmbiguousSkip,
+                    LayerName = layerName,
+                    Driver = driver,
+                    Reason = "off/on の threshold が同一",
+                });
                 return null;
             }
 

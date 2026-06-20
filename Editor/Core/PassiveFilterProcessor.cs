@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using nadena.dev.ndmf;
+using Sebanne.PassiveFilter.Editor.NDMF;
 using UnityEditor.Animations;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
@@ -55,6 +56,8 @@ namespace Sebanne.PassiveFilter.Editor.Core
 
             try
             {
+                var diagnostics = new List<PassiveFilterDiagnostic>();
+
                 if (!settings.Enabled)
                 {
                     PassiveFilterLog.Info("無効化されているためスキップしました。");
@@ -64,7 +67,12 @@ namespace Sebanne.PassiveFilter.Editor.Core
                 var descriptor = ctx.AvatarRootObject.GetComponent<VRCAvatarDescriptor>();
                 if (descriptor == null)
                 {
-                    PassiveFilterLog.Warn("VRCAvatarDescriptor が見つかりません。");
+                    diagnostics.Add(new PassiveFilterDiagnostic
+                    {
+                        Category = DiagnosticCategory.PrereqMissing,
+                        Reason = "VRCAvatarDescriptor が見つかりません。",
+                    });
+                    PassiveFilterNdmfConsoleReporter.Report(ctx.AvatarRootTransform, diagnostics, null);
                     return;
                 }
 
@@ -81,8 +89,12 @@ namespace Sebanne.PassiveFilter.Editor.Core
                 {
                     // 早期パス未実行 ＝ base param 集合が不明。base/MA を区別できないまま畳むと
                     // base default-ON（衣装など）を誤って隠すリスクがあるため、安全側に倒して何もしない。
-                    PassiveFilterLog.Warn(
-                        "base パラメータの捕捉に失敗（早期パス未実行）。誤補正回避のためスキップしました。");
+                    diagnostics.Add(new PassiveFilterDiagnostic
+                    {
+                        Category = DiagnosticCategory.SafetyAbort,
+                        Reason = "base パラメータの捕捉に失敗（早期パス未実行）。誤補正回避のため補正を中止しました。",
+                    });
+                    PassiveFilterNdmfConsoleReporter.Report(ctx.AvatarRootTransform, diagnostics, null);
                     return;
                 }
 
@@ -93,8 +105,8 @@ namespace Sebanne.PassiveFilter.Editor.Core
                 var exclusionRoots = NormalizeExclusions(settings.Exclusions);
                 bool menuOnly = settings.Scope == PassiveFilterSettings.TargetScope.MenuTogglesOnly;
 
-                var classicResults = ToggleScanner.Scan(fx, boolParams);
-                var blendResults = BlendTreeToggleScanner.Scan(fx, allParams);
+                var classicResults = ToggleScanner.Scan(fx, boolParams, diagnostics);
+                var blendResults = BlendTreeToggleScanner.Scan(fx, allParams, diagnostics);
                 PassiveFilterLog.Info(
                     $"検出: 古典 {classicResults.Count} 件 / BlendTree {blendResults.Count} 件。");
 
@@ -104,7 +116,7 @@ namespace Sebanne.PassiveFilter.Editor.Core
 
                 // 同一 driver param の結果を統合（scene disable 対象を union）。hidden 値が矛盾する
                 // param は安全側に倒してスキップ（先勝ちで誤った既定を書かない）。
-                var merged = MergeByDriver(all, out int conflictSkip);
+                var merged = MergeByDriver(all, diagnostics, out int conflictSkip);
 
                 int applied = 0, menuSkip = 0, baseSkip = 0, resolveSkip = 0;
 
@@ -120,7 +132,14 @@ namespace Sebanne.PassiveFilter.Editor.Core
                         var tr = ResolvePath(ctx.AvatarRootTransform, target.Path);
                         if (tr == null)
                         {
-                            PassiveFilterLog.Warn($"レイヤー '{result.LayerName}': パス '{target.Path}' を解決できずスキップしました。");
+                            diagnostics.Add(new PassiveFilterDiagnostic
+                            {
+                                Category = DiagnosticCategory.PathUnresolved,
+                                LayerName = result.LayerName,
+                                Driver = result.DriverParam,
+                                TargetPaths = new List<string> { target.Path },
+                                Reason = $"パス '{target.Path}' を解決できない",
+                            });
                             blocked = true;
                             break;
                         }
@@ -149,6 +168,18 @@ namespace Sebanne.PassiveFilter.Editor.Core
                 PassiveFilterLog.Info(
                     $"完了: 補正 {applied} / メニュー外 {menuSkip} / base 除外 {baseSkip} / " +
                     $"解決不可・除外 {resolveSkip} / 値矛盾 {conflictSkip}。");
+
+                PassiveFilterNdmfConsoleReporter.Report(
+                    ctx.AvatarRootTransform,
+                    diagnostics,
+                    new PassiveFilterBuildSummary
+                    {
+                        Applied = applied,
+                        MenuSkip = menuSkip,
+                        BaseSkip = baseSkip,
+                        ResolveSkip = resolveSkip,
+                        ConflictSkip = conflictSkip,
+                    });
             }
             finally
             {
@@ -193,7 +224,8 @@ namespace Sebanne.PassiveFilter.Editor.Core
         /// BlendTree の複数葉）は scene disable 対象を union し、1 回だけ反映する。hidden 値が
         /// 矛盾する param は安全側に倒してスキップする（走査順依存で誤った既定を書かないため）。
         /// </summary>
-        private static List<ToggleHideResult> MergeByDriver(List<ToggleHideResult> results, out int conflictSkip)
+        private static List<ToggleHideResult> MergeByDriver(
+            List<ToggleHideResult> results, List<PassiveFilterDiagnostic> diagnostics, out int conflictSkip)
         {
             var byParam = new Dictionary<string, ToggleHideResult>();
             var order = new List<string>();
@@ -216,8 +248,12 @@ namespace Sebanne.PassiveFilter.Editor.Core
                 {
                     conflicted.Add(r.DriverParam);
                     byParam.Remove(r.DriverParam);
-                    PassiveFilterLog.Warn(
-                        $"param '{r.DriverParam}' は複数トグルで hidden 値が矛盾するため安全のためスキップしました。");
+                    diagnostics.Add(new PassiveFilterDiagnostic
+                    {
+                        Category = DiagnosticCategory.ConflictSkip,
+                        Driver = r.DriverParam,
+                        Reason = "複数トグルで hidden 値が矛盾するため安全のためスキップ",
+                    });
                     continue;
                 }
 

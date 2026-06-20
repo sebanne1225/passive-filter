@@ -43,20 +43,22 @@ namespace Sebanne.PassiveFilter.Editor.Core
     /// </summary>
     internal static class ToggleScanner
     {
-        public static List<ToggleHideResult> Scan(AnimatorController controller, HashSet<string> boolParams)
+        public static List<ToggleHideResult> Scan(
+            AnimatorController controller, HashSet<string> boolParams, List<PassiveFilterDiagnostic> diagnostics)
         {
             var results = new List<ToggleHideResult>();
             if (controller == null) return results;
 
             foreach (var layer in controller.layers)
             {
-                var result = ScanLayer(layer, boolParams);
+                var result = ScanLayer(layer, boolParams, diagnostics);
                 if (result != null) results.Add(result);
             }
             return results;
         }
 
-        private static ToggleHideResult ScanLayer(AnimatorControllerLayer layer, HashSet<string> boolParams)
+        private static ToggleHideResult ScanLayer(
+            AnimatorControllerLayer layer, HashSet<string> boolParams, List<PassiveFilterDiagnostic> diagnostics)
         {
             var sm = layer.stateMachine;
             if (sm == null) return null;
@@ -86,7 +88,8 @@ namespace Sebanne.PassiveFilter.Editor.Core
             var clipB = stateB.motion as AnimationClip;
             if ((stateA.motion != null && clipA == null) || (stateB.motion != null && clipB == null))
             {
-                PassiveFilterLog.Warn($"レイヤー '{layer.name}' は BlendTree を含むためスキップしました。");
+                // BlendTree を含む層は BlendTreeToggleScanner が別途処理する。古典器では silent skip
+                // （両スキャナが同一層を踏むため、ここで通知すると二重通知ノイズになる）。
                 return null;
             }
 
@@ -95,7 +98,13 @@ namespace Sebanne.PassiveFilter.Editor.Core
             if (!HiddenBindingClassifier.TryResolveHidden(mapA, mapB, out bool hiddenIsA, out var targets, out var conflict))
             {
                 if (conflict != null)
-                    PassiveFilterLog.Warn($"レイヤー '{layer.name}' は{conflict}ためスキップしました。");
+                    diagnostics.Add(new PassiveFilterDiagnostic
+                    {
+                        Category = DiagnosticCategory.AmbiguousSkip,
+                        LayerName = layer.name,
+                        Driver = driver,
+                        Reason = conflict,
+                    });
                 return null; // hide 対象なし or 方向矛盾
             }
 
@@ -103,7 +112,13 @@ namespace Sebanne.PassiveFilter.Editor.Core
 
             if (!TryGetDriverValueForState(sm, commonHidden, driver, stateA, stateB, out bool hiddenValue))
             {
-                PassiveFilterLog.Warn($"レイヤー '{layer.name}' は driver パラメータ '{driver}' の hidden 値を特定できずスキップしました。");
+                diagnostics.Add(new PassiveFilterDiagnostic
+                {
+                    Category = DiagnosticCategory.AmbiguousSkip,
+                    LayerName = layer.name,
+                    Driver = driver,
+                    Reason = $"driver パラメータ '{driver}' の hidden 値を特定できない",
+                });
                 return null;
             }
 

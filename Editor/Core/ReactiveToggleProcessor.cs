@@ -1,6 +1,7 @@
 #if PASSIVEFILTER_MA
 using System.Collections.Generic;
 using nadena.dev.ndmf;
+using Sebanne.PassiveFilter.Editor.NDMF;
 using UnityEngine;
 
 namespace Sebanne.PassiveFilter.Editor.Core
@@ -29,14 +30,22 @@ namespace Sebanne.PassiveFilter.Editor.Core
             //   MenuTogglesOnly / AllToggles のいずれでも対象に含まれる（実質 no-op）。
             // 軸2(base 除外): 方式(b) は定義上 MA 追加分のみを触るため、常に通す（research §4.3）。
 
+            var diagnostics = new List<PassiveFilterDiagnostic>();
             int applied = 0, complexSkip = 0, exclSkip = 0;
 
             foreach (var result in results)
             {
                 if (result.SkipReason != null)
                 {
-                    PassiveFilterLog.Warn(
-                        $"MA トグル '{ToggleName(result)}' は{result.SkipReason}ため自動補正をスキップしました。");
+                    diagnostics.Add(new PassiveFilterDiagnostic
+                    {
+                        Category = DiagnosticCategory.MaReactiveSkip,
+                        Label = ToggleName(result),
+                        Reason = result.SkipReason,
+                        ContextObjects = result.Toggle != null
+                            ? new List<UnityEngine.Object> { result.Toggle.gameObject }
+                            : null,
+                    });
                     complexSkip++;
                     continue;
                 }
@@ -61,6 +70,9 @@ namespace Sebanne.PassiveFilter.Editor.Core
 
             PassiveFilterLog.Info(
                 $"MA リアクティブ完了: 補正 {applied} / 複雑スキップ {complexSkip} / 除外 {exclSkip}。");
+
+            // MA パスは summary を出さず（主パス PassiveFilterProcessor が出す）、診断のみ surface。
+            PassiveFilterNdmfConsoleReporter.Report(ctx.AvatarRootTransform, diagnostics, null);
         }
 
         private static string ToggleName(ReactiveToggleResult result)
